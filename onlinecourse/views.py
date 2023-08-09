@@ -1,13 +1,14 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
-# <HINT> Import any new Models here
-from .models import Course, Enrollment
+from .models import Course, Enrollment, Submission, Choice  # Import the necessary models
 from django.contrib.auth.models import User
-from django.shortcuts import get_object_or_404, render, redirect
+from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.views import generic
 from django.contrib.auth import login, logout, authenticate
 import logging
+from django.conf import settings
+from django.conf.urls.static import static
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
 # Create your views here.
@@ -102,7 +103,43 @@ def enroll(request, course_id):
 
     return HttpResponseRedirect(reverse(viewname='onlinecourse:course_details', args=(course.id,)))
 
+def submit_exam(request, course_id):
+    if request.method == 'POST':
+        course = Course.objects.get(pk=course_id)
+        user = request.user
 
+        # Process the selected choices from the exam form
+        submitted_answers = extract_answers(request)
+
+        # Create a submission record and add selected choices to it
+        submission = Submission.objects.create(user=user, course=course)
+        for choice_id in submitted_answers:
+            choice = Choice.objects.get(pk=choice_id)
+            submission.choices.add(choice)
+
+        # Calculate the score and pass/fail status (implement your scoring logic here)
+        # For example, you can count correct answers and calculate a percentage score
+        correct_choices = course.correct_choices.all()
+        total_correct_choices = correct_choices.count()
+        correct_answers = submission.choices.filter(pk__in=correct_choices)
+        total_correct_answers = correct_answers.count()
+
+        # Calculate the score percentage
+        score_percentage = (total_correct_answers / total_correct_choices) * 100
+
+        # Determine pass or fail based on the score
+        if score_percentage >= 80:
+            passed = True
+        else:
+            passed = False
+
+        # Redirect to the exam result page
+        return redirect('onlinecourse:exam_result', course_id=course_id, submission_id=submission.id, passed=passed)
+
+    else:
+        # Handle GET request for the exam form
+        course = Course.objects.get(pk=course_id)
+        return render(request, 'onlinecourse/exam_submission_bootstrap.html', {'course': course})
 # <HINT> Create a submit view to create an exam submission record for a course enrollment,
 # you may implement it based on following logic:
          # Get user and course object, then get the associated enrollment object created when the user enrolled the course
